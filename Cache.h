@@ -8,9 +8,11 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
+#include <cassert>
 
 #define POW2(exp) ((uint32_t)(1 << (exp)))
 #define NOT_FOUND (-1)
+#define NO_ADDRESS ((uint32_t)~0)
 
 typedef int wayIdx_t;
 typedef uint32_t set_t;
@@ -25,15 +27,15 @@ class Cache {
     */
 
     struct TagLine {
-		tag_t m_tagBits;
-        bool m_validBit;
-        int m_LRUCount;
+		tag_t tagBits;
+        bool validBit;
+        int lruCount;
     //    bool m_dirtyBit;
     };
 
-    struct Way {
-        std::vector<TagLine> m_tags;
-       // std::vector<Block> blocks_m;
+    struct Set {
+        std::vector<TagLine> tags;
+       // std::vector<Block> blocks;
     };
 
     //enum WRITE_POLICY {
@@ -54,7 +56,7 @@ class Cache {
     
 	//WRITE_POLICY m_writePolicy;
 
-    std::vector<Way> m_ways;
+    std::vector<Set> m_sets;
     
 
     address_t m_tagMask;
@@ -81,11 +83,24 @@ public:
 		m_tagMask = ~(m_setMask);
     }
 
-	//if victim don't update LRU if found. otherwise update.
+	//if victim cache don't update LRU if found. otherwise update.
 	wayIdx_t Find(uint32_t address) {
-	
+		set_t set = GetSet(address);
+		tag_t tag = GetTag(address);
+
+		for (wayIdx_t way = 0; static_cast<wayIdx_t>(m_numOfWays); way++) {
+			TagLine& cacheline = m_sets[set].tags[way];
+			if (cacheline.validBit && cacheline.tagBits == tag) {
+				if (!m_fifo) {
+					UpdateLRU(set, way);
+				}
+				return way;
+			}
+		}
+		return NOT_FOUND;
 	}
 
+	//let's say that count 0 is the most reacently used, and max count is the victim.
 	bool UpdateLRU(uint32_t address) {
 
 	}
@@ -94,24 +109,65 @@ public:
 
 	}
 
-	//return removed
-	address_t RemoveLast() {
-
+	wayIdx_t findEmptyWay(set_t set) {
+		for (wayIdx_t way = 0; way < static_cast<wayIdx_t>(m_numOfWays); way++) {
+			if (m_sets[set].tags[way].validBit == false) {
+				return way;
+			}
+		}
+		return NOT_FOUND;
 	}
 
-	//returns address that was removed or -1 if non removed. and update LRU
+	//return removed
+	address_t RemoveLast(set_t set) {
+		assert(findEmptyWay(set) == NOT_FOUND);
+		TagLine& victim = m_sets[set].tags[0];
+		for (TagLine& cacheLine : m_sets[set].tags ) {
+			if (cacheLine.lruCount > victim.lruCount) {
+				victim = cacheLine;
+			}
+		}
+		victim.validBit = false;
+		return GetAddress(set, victim.tagBits);
+	}
+
+	//returns address that was removed or NO_ADDRESS if non removed. and update LRU
 	address_t Add(uint32_t address) {
+
+		set_t set = GetSet(address);
+
+		wayIdx_t empty = findEmptyWay(set);
+		address_t victim = NO_ADDRESS;
+		if (empty == NOT_FOUND) {
+			victim = RemoveLast(set);
+		}
+		empty = findEmptyWay(set);
+		assert(empty != NOT_FOUND);
+
+		m_sets[set].tags[empty].tagBits = GetTag(address);
+		assert(m_sets[set].tags[empty].validBit == false);
+		m_sets[set].tags[empty].validBit = true;
+		UpdateLRU(set, empty);
+
+		return victim;
 
 	}
 
 	uint32_t GetMissCycles() { return m_numOfCycles; }
 
 
-
-    set_t getSetNum(uint32_t address){
+    set_t GetSet(address_t address){
         address &= m_setMask;
         return address>> m_numOfTagBits;
     }
+
+	address_t GetAddress(set_t set, tag_t tag) {
+		//TODO
+	}
+
+	tag_t GetTag(address_t address) {
+		//TODO
+	}
 
 };
 
