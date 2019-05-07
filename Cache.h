@@ -71,6 +71,8 @@ public:
 		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(assoc),
 		m_numOfCycles(cycles){
 
+    	m_numOfOffsetBits = blockSize;
+
 		//m_writePolicy = WRITE_POLICY(writePolicy);
 		m_numOfSetBits = cacheSize - blockSize;
 		m_numOfSetBits = m_numOfOffsetBits -assoc;
@@ -162,7 +164,7 @@ public:
 		assert(empty != NOT_FOUND);
 
 		m_sets[set].tags[empty].tagBits = GetTag(address);
-		assert(m_sets[set].tags[empty].validBit == false);
+		assert(!m_sets[set].tags[empty].validBit);
 		m_sets[set].tags[empty].validBit = true;
 		UpdateLRU(set, empty);
 
@@ -179,11 +181,11 @@ public:
     }
 
 	address_t GetAddress(set_t set, tag_t tag) {
-		//TODO
+
 	}
 
 	tag_t GetTag(address_t address) {
-		//TODO
+		return address & m_tagMask;
 	}
 
 };
