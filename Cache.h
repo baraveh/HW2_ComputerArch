@@ -100,13 +100,30 @@ public:
 		return NOT_FOUND;
 	}
 
-	//let's say that count 0 is the most reacently used, and max count is the victim.
-	bool UpdateLRU(uint32_t address) {
-
+	//let's say that numOfWays-1 is the most reacently used, and min count is the victim.
+	void UpdateLRU(uint32_t address) {
+        set_t set = GetSet(address);
+        tag_t tag = GetTag(address);
+        wayIdx_t way = NO_ADDRESS;
+        for(wayIdx_t i = 0; i < static_cast<wayIdx_t>(m_numOfWays); i++){
+            TagLine& cacheline = m_sets[set].tags[i];
+            if(cacheline.validBit && cacheline.tagBits == tag){
+                way = i;
+            }
+        }
+        assert(way != NO_ADDRESS);
+        UpdateLRU(set, way);
 	}
 
-	bool UpdateLRU(set_t set, wayIdx_t way) {
-
+	void UpdateLRU(set_t set, wayIdx_t way) {
+        int x = m_sets[set].tags[way].lruCount;
+        m_sets[set].tags[way].lruCount = m_numOfWays -1;
+        for(int i = 0; i < static_cast<wayIdx_t>(m_numOfWays); i++){
+            TagLine& cacheline = m_sets[set].tags[i];
+            if(cacheline.validBit && cacheline.tagBits != m_sets[set].tags[way].tagBits && cacheline.lruCount > x){
+                cacheline.lruCount--;
+            }
+        }
 	}
 
 	wayIdx_t findEmptyWay(set_t set) {
@@ -123,7 +140,7 @@ public:
 		assert(findEmptyWay(set) == NOT_FOUND);
 		TagLine& victim = m_sets[set].tags[0];
 		for (TagLine& cacheLine : m_sets[set].tags ) {
-			if (cacheLine.lruCount > victim.lruCount) {
+			if (cacheLine.lruCount < victim.lruCount) {
 				victim = cacheLine;
 			}
 		}
