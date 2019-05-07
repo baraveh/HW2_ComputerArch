@@ -46,11 +46,10 @@ class Cache {
 
 	int m_numOfAccesses;
 	int m_hits;
-	int m_totalTime;
     uint32_t m_cacheSize;
 	uint32_t m_blockSize; //offset bits
 	uint32_t m_numOfWays;
-	uint32_t m_numOfCycles;
+	int m_numOfCycles;
 
 	uint32_t m_numOfSetBits; //pow 2 = number of sets
 	uint32_t m_numOfOffsetBits;
@@ -93,7 +92,6 @@ public:
 	//if victim cache don't update LRU if found. otherwise update.
 	wayIdx_t Find(uint32_t address) {
 		m_numOfAccesses++;
-		m_totalTime += m_numOfCycles;
     	set_t set = GetSet(address);
 		tag_t tag = GetTag(address);
 
@@ -180,7 +178,7 @@ public:
 
 	}
 
-	int GetTotalCycles() { return m_totalTime; }
+	int GetTotalCycles() { return m_numOfAccesses*m_numOfCycles; }
 
 	float getHitRate(){
     	return float(m_hits)/float(m_numOfAccesses);
