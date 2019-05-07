@@ -31,28 +31,16 @@ enum OPERATION {
 
 class Cache {
 
-    /* struct Block {
-        //std::vector<uint32_t> dataArr_m;
-    };
-    */
-
-
-
     struct TagLine {
 		tag_t tagBits;
         bool validBit;
         int lruCount;
-    //    bool m_dirtyBit;
+        bool dirtyBit;
     };
 
     struct Set {
         std::vector<TagLine> tags;
-       // std::vector<Block> blocks;
     };
-
-    //enum WRITE_POLICY {
-	//	NO_WRITE_ALLOC = 0, WRITE_ALLOC = 1
-    //};
 
 	int m_numOfAccesses;
 	int m_hits;
@@ -67,11 +55,7 @@ class Cache {
 
 	bool m_fifo; //true if fifo policy
 
-    
-	//WRITE_POLICY m_writePolicy;
-
     std::vector<Set> m_sets;
-    
 
     address_t m_tagMask;
 	address_t m_setMask;
@@ -80,14 +64,12 @@ class Cache {
 public:
 
     Cache(unsigned int cacheSize, unsigned int blockSize, unsigned int assoc,
-          unsigned int cycles //, unsigned int writePolicy
-	) :
+          unsigned int cycles) :
 		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(assoc),
 		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0){
 
     	m_numOfOffsetBits = blockSize;
 
-		//m_writePolicy = WRITE_POLICY(writePolicy);
 		m_numOfSetBits = cacheSize - blockSize;
 		m_numOfSetBits = m_numOfOffsetBits -assoc;
 		m_numOfTagBits = 32 - (m_blockSize + m_numOfSetBits);
@@ -99,8 +81,8 @@ public:
 		m_tagMask = ~(m_setMask);
     }
 
-	//if victim cache don't update LRU if found. otherwise update.
-	wayIdx_t Find(uint32_t address) {
+	//if victim cache - don't update LRU if found. otherwise update.
+	wayIdx_t Find(uint32_t address, OPERATION op) {
 		m_numOfAccesses++;
     	set_t set = GetSet(address);
 		tag_t tag = GetTag(address);
@@ -112,6 +94,9 @@ public:
 					UpdateLRU(set, way);
 				}
 				m_hits++;
+				if (op == WRITE) {
+					cacheline.dirtyBit = true;
+				}
 				return way;
 			}
 		}
@@ -153,8 +138,8 @@ public:
 		return NOT_FOUND;
 	}
 
-	//return removed
-	address_t RemoveLast(set_t set) {
+	//return removed, return if it was dirty.
+	address_t RemoveLast(set_t set, bool& dirtyRemove) {
 		assert(findEmptyWay(set) == NOT_FOUND);
 		TagLine& victim = m_sets[set].tags[0];
 		for (TagLine& cacheLine : m_sets[set].tags ) {
@@ -163,18 +148,19 @@ public:
 			}
 		}
 		victim.validBit = false;
+		dirtyRemove = victim.dirtyBit;
 		return GetAddress(set, victim.tagBits);
 	}
 
 	//returns address that was removed or NO_ADDRESS if non removed. and update LRU
-	address_t Add(uint32_t address) {
+	address_t Add(uint32_t address, bool& dirtyRemove) {
 
 		set_t set = GetSet(address);
 
 		wayIdx_t empty = findEmptyWay(set);
 		address_t victim = NO_ADDRESS;
 		if (empty == NOT_FOUND) {
-			victim = RemoveLast(set);
+			victim = RemoveLast(set, dirtyRemove);
 		}
 		empty = findEmptyWay(set);
 		assert(empty != NOT_FOUND);
@@ -214,102 +200,56 @@ public:
 class CacheSim {
 
 	//more simulator params
-	
-	
+
+
 	Cache m_L1;
 	Cache m_L2;
 	Cache m_victim;
 
-	int m_totalTime;
-	int m_L1Misses;
-	int m_L2Misses;
-	int m_totalAccess;
+	int m_memAccess;
+
+	bool m_usingVictimCache;
 
 	WRITE_POLICY m_writePolicy;
 
-	CacheSim(  ) {}
-/**
-	bool L1Search(address_t adr) {
-		m_totalTime += m_l1AccessTime;
-		//update miss/hit rat
-		if (m_L1.Find(adr) != NOT_FOUND) {
-			m_L2.UpdateLRU(adr);
-			return true;
-		}
-		return false;
-	}
-	bool L2Search(address_t adr) {
-		m_totalTime += m_l2AccessTime;
-		//update miss/hit rate
-		if (m_L2.Find(adr) != NOT_FOUND) {
-			m_L1.Add(adr);
-			return true;
-		}
-		return false;
-	}
-	bool VictimSearch(address_t adr) {
-		if (!m_withVictimCache) {
-			return false;
-		}
-		m_totalTime += m_victimAccessTime;
-		if (m_victim.Find(adr) != NOT_FOUND) {
-			m_L1.Add(adr);
-			m_L2.Add(adr);
-			return true;
-		}
-		return false;
-	}
+	CacheSim() {}
 
-	void HandleNewAddress(address_t adr, char operation) {
-		if (L1Search(adr)) {
-			return;
-		}
-		if (L2Search(adr)) {
-			return;
-		}
-		if (VictimSearch(adr)) {
-			return;
-		}
-		m_totalTime += m_memAccessTime;
-		if (operation == 'W' && m_writePolicy == NO_WRITE_ALLOC) {
-			return;
-		}
-		m_L1.Add(adr);
-		address_t victimAddress = m_L2.Add(adr);
-		if (victimAddress != NOT_FOUND) {
-			m_victim.Add(victimAddress);
-		}		
-	}
-	**/
+	void AddToL1(address_t adr) {} //TODO
+	void AddToL2(address_t adr) {} //TODO
+
 	void HandleNewAddress(address_t adr, char operation) {
 		OPERATION op = (operation == 'W') ? WRITE : READ;
 		bool noAlloc = (op == WRITE && m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
 
-
 		if (m_L1.Find(adr, op) != NOT_FOUND) {
 			return; // not need for anything else.
 		}
-		
+
 		if (m_L2.Find(adr, op) != NOT_FOUND) {
 
-			if (!noAlloc) { //need to add to L1
-				bool victimIsDirty;
-				address_t victim = m_L1.Add(adr, victimIsDirty); // do we need to add another access to L1?
-				if (victim != NO_ADDRESS && victimIsDirty) {
-					m_L2.Find(victim); //update L2's LRU for victim.
-				}
+			if ((op == WRITE && m_writePolicy == WRITE_ALLOC) || op == READ) {
+				AddToL1(adr);
 			}
 			return;
 		}
 
-
-
-
-
+		if (m_usingVictimCache) {
+			if (m_victim.Find(adr, op) != NOT_FOUND) {
+				AddToL2(adr);
+				AddToL1(adr);
+				return;
+			}
+		}
+		m_memAccess++;
+		if ((op == WRITE && m_writePolicy == WRITE_ALLOC) || op == READ) {
+			AddToL2(adr); //first add to L2.
+			AddToL1(adr);
+		}
+		return;
 	}
-
-
 };
+
+
 
 
 #endif //HW2_COMPUTERARCH_CACHE_H
