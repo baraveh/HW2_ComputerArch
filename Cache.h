@@ -19,6 +19,16 @@ typedef uint32_t set_t;
 typedef uint32_t tag_t;
 typedef uint32_t address_t;
 
+enum WRITE_POLICY {
+	WRITE_ALLOC = 0,
+	NO_WRITE_ALLOC,
+};
+
+enum OPERATION {
+	READ = 0,
+	WRITE,
+};
+
 class Cache {
 
     /* struct Block {
@@ -215,8 +225,10 @@ class CacheSim {
 	int m_L2Misses;
 	int m_totalAccess;
 
-	CacheSim(  ) {}
+	WRITE_POLICY m_writePolicy;
 
+	CacheSim(  ) {}
+/**
 	bool L1Search(address_t adr) {
 		m_totalTime += m_l1AccessTime;
 		//update miss/hit rat
@@ -268,6 +280,35 @@ class CacheSim {
 			m_victim.Add(victimAddress);
 		}		
 	}
+	**/
+	void HandleNewAddress(address_t adr, char operation) {
+		OPERATION op = (operation == 'W') ? WRITE : READ;
+		bool noAlloc = (op == WRITE && m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
+
+
+		if (m_L1.Find(adr, op) != NOT_FOUND) {
+			return; // not need for anything else.
+		}
+		
+		if (m_L2.Find(adr, op) != NOT_FOUND) {
+
+			if (!noAlloc) { //need to add to L1
+				bool victimIsDirty;
+				address_t victim = m_L1.Add(adr, victimIsDirty); // do we need to add another access to L1?
+				if (victim != NO_ADDRESS && victimIsDirty) {
+					m_L2.Find(victim); //update L2's LRU for victim.
+				}
+			}
+			return;
+		}
+
+
+
+
+
+	}
+
+
 };
 
 
