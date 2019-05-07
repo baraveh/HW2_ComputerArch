@@ -26,6 +26,8 @@ class Cache {
     };
     */
 
+
+
     struct TagLine {
 		tag_t tagBits;
         bool validBit;
@@ -42,6 +44,9 @@ class Cache {
 	//	NO_WRITE_ALLOC = 0, WRITE_ALLOC = 1
     //};
 
+	int m_numOfAccesses;
+	int m_hits;
+	int m_totalTime;
     uint32_t m_cacheSize;
 	uint32_t m_blockSize; //offset bits
 	uint32_t m_numOfWays;
@@ -69,7 +74,7 @@ public:
           unsigned int cycles //, unsigned int writePolicy
 	) :
 		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(assoc),
-		m_numOfCycles(cycles){
+		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0){
 
     	m_numOfOffsetBits = blockSize;
 
@@ -87,7 +92,9 @@ public:
 
 	//if victim cache don't update LRU if found. otherwise update.
 	wayIdx_t Find(uint32_t address) {
-		set_t set = GetSet(address);
+		m_numOfAccesses++;
+		m_totalTime += m_numOfCycles;
+    	set_t set = GetSet(address);
 		tag_t tag = GetTag(address);
 
 		for (wayIdx_t way = 0; static_cast<wayIdx_t>(m_numOfWays); way++) {
@@ -96,6 +103,7 @@ public:
 				if (!m_fifo) {
 					UpdateLRU(set, way);
 				}
+				m_hits++;
 				return way;
 			}
 		}
@@ -172,7 +180,11 @@ public:
 
 	}
 
-	uint32_t GetMissCycles() { return m_numOfCycles; }
+	int GetTotalCycles() { return m_totalTime; }
+
+	float getHitRate(){
+    	return float(m_hits)/float(m_numOfAccesses);
+    }
 
 
     set_t GetSet(address_t address){
