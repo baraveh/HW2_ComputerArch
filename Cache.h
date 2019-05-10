@@ -156,6 +156,8 @@ public:
         }
         m_sets[set].tags[wayToClear].validBit = false;
         dirtyRemove = m_sets[set].tags[wayToClear].dirtyBit;
+		m_sets[set].tags[wayToClear].dirtyBit = 0;
+		m_sets[set].tags[wayToClear].lruCount = 0;
         return GetAddress(set, m_sets[set].tags[wayToClear].tagBits);
     }
 
@@ -166,6 +168,8 @@ public:
             if (victim.tagBits == tag) {
                 dirtyRemove = victim.dirtyBit;
                 victim.validBit = false;
+				victim.dirtyBit = 0;
+				victim.lruCount = 0;
                 assert(GetAddress(set, tag) == (adr & (~m_offsetMask)));
                 return adr;
             }
