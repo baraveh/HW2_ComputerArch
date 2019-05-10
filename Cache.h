@@ -230,11 +230,12 @@ public:
 
     set_t GetSet(address_t address) {
         address &= m_setMask;
-        return address >> m_numOfTagBits;
+        uint32_t res = address >> m_numOfOffsetBits;
+        return set_t (res);
     }
 
     address_t GetAddress(set_t set, tag_t tag) {
-        address_t adr = set << m_numOfTagBits;
+        address_t adr = set << m_numOfOffsetBits;
         adr += tag;
         return adr;
     }
