@@ -20,8 +20,8 @@ typedef uint32_t tag_t;
 typedef uint32_t address_t;
 
 enum WRITE_POLICY {
-	WRITE_ALLOC = 0,
-	NO_WRITE_ALLOC,
+	NO_WRITE_ALLOC = 0,
+	WRITE_ALLOC,
 };
 
 enum OPERATION {
