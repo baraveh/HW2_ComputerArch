@@ -203,7 +203,8 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
-            if (cacheline.validBit && cacheline.tagBits == tag) {
+            if (cacheline.tagBits == tag) {
+				assert(cacheline.validBit);
                 cacheline.dirtyBit = dirtyVal;
             }
         }
@@ -213,7 +214,8 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
-            if (cacheline.validBit && cacheline.tagBits == tag) {
+            if (cacheline.tagBits == tag) {
+				assert(cacheline.validBit);
                 return (cacheline.dirtyBit);
             }
         }
@@ -231,11 +233,11 @@ public:
 
     set_t GetSet(address_t address) {
         address &= m_setMask;
-        return address >> m_numOfTagBits;
+        return address >> m_numOfOffsetBits;
     }
 
     address_t GetAddress(set_t set, tag_t tag) {
-        address_t adr = set << m_numOfTagBits;
+        address_t adr = set << m_numOfOffsetBits;
         adr += tag;
         return adr;
     }
