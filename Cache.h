@@ -309,7 +309,7 @@ public:
 
     void HandleNewAddress(address_t adr, char operation) {
         m_commands++;
-        OPERATION op = (operation == 'W') ? WRITE : READ;
+        OPERATION op = (operation == 'W' || operation == 'w') ? WRITE : READ;
         bool noAllocWrite = (op == WRITE &&
                              m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
 
