@@ -42,43 +42,42 @@ class Cache {
         std::vector<TagLine> tags;
     };
 
-	int m_numOfAccesses;
-	int m_hits;
     uint32_t m_cacheSize;
 	uint32_t m_blockSize; //offset bits
 	uint32_t m_numOfWays;
 	int m_numOfCycles;
+	int m_numOfAccesses;
+	int m_hits;
+	bool m_fifo; //true if fifo policy\
 
 	uint32_t m_numOfSetBits; //pow 2 = number of sets
 	uint32_t m_numOfOffsetBits;
 	uint32_t m_numOfTagBits;
 
-	bool m_fifo; //true if fifo policy
-
-    std::vector<Set> m_sets;
-
     address_t m_tagMask;
 	address_t m_setMask;
 	address_t m_offsetMask;
 
+	std::vector<Set> m_sets;
+
 public:
 
     Cache(unsigned int cacheSize, unsigned int blockSize, unsigned int assoc,
-          unsigned int cycles) :
-		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(assoc),
-		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0) {
+          unsigned int cycles, bool fifo) :
+		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(POW2(assoc)),
+		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0), m_fifo(fifo) {
 
-    	m_numOfOffsetBits = blockSize;
-
+		m_numOfOffsetBits = blockSize;
 		m_numOfSetBits = cacheSize - blockSize;
-		m_numOfSetBits = m_numOfOffsetBits -assoc;
+		m_numOfSetBits = m_numOfOffsetBits - assoc;
 		m_numOfTagBits = 32 - (m_blockSize + m_numOfSetBits);
-
 		m_offsetMask = POW2(m_numOfOffsetBits) - 1;
-
 		m_setMask = (POW2(m_numOfSetBits + m_numOfOffsetBits) - 1);
-
 		m_tagMask = ~(m_setMask);
+		
+		m_sets = std::vector<Set>(static_cast<size_t>(POW2(m_numOfSetBits)), //size
+			{ std::vector<TagLine>(static_cast<size_t>(m_numOfWays), { 0,0,0,0 }) }); //default value
+
     }
 
 
@@ -88,7 +87,7 @@ public:
     	set_t set = GetSet(address);
 		tag_t tag = GetTag(address);
 				
-		for (wayIdx_t way = 0; static_cast<wayIdx_t>(m_numOfWays); way++) {
+		for (wayIdx_t way = 0; way < static_cast<wayIdx_t>(m_numOfWays); way++) {
 			TagLine& cacheline = m_sets[set].tags[way];
 			if (cacheline.validBit && cacheline.tagBits == tag) {
 				if (!m_fifo) {
@@ -157,7 +156,7 @@ public:
 			if (victim.tagBits == tag) {
 				dirtyRemove = victim.dirtyBit;
 				victim.validBit = false;
-				assert(GetAddress(set, tag) == (adr&(!m_offsetMask)));
+				assert(GetAddress(set, tag) == (adr&(~m_offsetMask)));
 				return adr;
 			}
 		}
@@ -209,7 +208,7 @@ public:
 
 	int GetTotalCycles() { return m_numOfAccesses*m_numOfCycles; }
 
-	float getHitRate(){
+	float GetHitRate(){
     	return float(m_hits)/float(m_numOfAccesses);
     }
 
@@ -239,16 +238,15 @@ class CacheSim {
 	Cache m_L1;
 	Cache m_L2;
 	Cache m_victim;
+	bool m_usingVictimCache;
+	WRITE_POLICY m_writePolicy;
+	int m_memCycles;
 
 	int m_memAccess;
+	int m_commands;
+	
 
-	bool m_usingVictimCache;
-
-	WRITE_POLICY m_writePolicy;
-
-	CacheSim() {}
-
-
+	//================================================================================//
 	void AddToL1(address_t adr) {
 		bool dirtyRemove;
 		address_t victim = m_L1.Add(adr, dirtyRemove); //victim is the block removed if no room
@@ -279,13 +277,23 @@ class CacheSim {
 				m_victim.ModifyDirty(victim, dirtyRemoveL2);
 			}
 		}
+	}
 
+public:
 
-		
-
-	} //TODO
+	CacheSim(uint32_t MemCyc, uint32_t BSize, uint32_t L1Size, uint32_t L2Size, uint32_t L1Assoc,
+		uint32_t L2Assoc, uint32_t L1Cyc, uint32_t L2Cyc, uint32_t WrAlloc, uint32_t VicCache) :
+		m_L1(L1Size, BSize, L1Assoc, L1Cyc, false),
+		m_L2(L2Size, BSize, L2Assoc, L2Cyc, false),
+		m_victim(BSize + 2, BSize, 2, 1, true),
+		m_usingVictimCache(static_cast<bool>(VicCache)),
+		m_writePolicy(static_cast<WRITE_POLICY>(WrAlloc)),
+		m_memCycles(MemCyc),
+		m_memAccess(0),
+		m_commands(0) {}
 
 	void HandleNewAddress(address_t adr, char operation) {
+		m_commands++;
 		OPERATION op = (operation == 'W') ? WRITE : READ;
 		bool noAllocWrite = (op == WRITE && m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
 
@@ -339,6 +347,24 @@ class CacheSim {
 		}
 		return;
 	}
+
+	float GetAvarageAccessTime() {
+		unsigned int t = 0;
+		t += m_memAccess * m_memCycles;
+		t += (m_usingVictimCache) ? m_victim.GetTotalCycles() : 0;
+		t += m_L1.GetTotalCycles();
+		t += m_L2.GetTotalCycles();
+		return (m_commands)? (float)t / (float)m_commands : 0;
+	}
+
+	float GetL1MissRate() {
+		return 1-m_L1.GetHitRate();
+	}
+
+	float GetL2MissRate() {
+		return 1 - m_L2.GetHitRate();
+	}
+	
 };
 
 

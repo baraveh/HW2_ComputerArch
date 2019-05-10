@@ -63,6 +63,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	CacheSim sim(MemCyc, BSize, L1Size, L2Size, L1Assoc, L2Assoc,
+		L1Cyc, L2Cyc, WrAlloc, VicCache);
 
 	while (getline(file, line))
 	{
@@ -86,13 +88,15 @@ int main(int argc, char *argv[]) {
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
 
+		sim.HandleNewAddress(num, operation);
+
 		// DEBUG - remove this line
 		cout << " (dec) " << num << endl;
 	}
 
-	printf("L1miss=%.03f ", L1MissRate);
-	printf("L2miss=%.03f ", L2MissRate);
-	printf("AccTimeAvg=%.03f\n", avgAccTime);
+	printf("L1miss=%.03f ", sim.GetL1MissRate());
+	printf("L2miss=%.03f ", sim.GetL2MissRate());
+	printf("AccTimeAvg=%.03f\n", sim.GetAvarageAccessTime());
 
 	return 0;
 }
