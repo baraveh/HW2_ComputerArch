@@ -66,7 +66,7 @@ public:
     Cache(unsigned int cacheSize, unsigned int blockSize, unsigned int assoc,
           unsigned int cycles) :
 		m_cacheSize(cacheSize), m_blockSize(blockSize), m_numOfWays(assoc),
-		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0){
+		m_numOfCycles(cycles), m_numOfAccesses(0), m_hits(0) {
 
     	m_numOfOffsetBits = blockSize;
 
@@ -81,12 +81,13 @@ public:
 		m_tagMask = ~(m_setMask);
     }
 
+
 	//if victim cache - don't update LRU if found. otherwise update.
-	wayIdx_t Find(uint32_t address, OPERATION op) {
+	wayIdx_t Access(uint32_t address) {
 		m_numOfAccesses++;
     	set_t set = GetSet(address);
 		tag_t tag = GetTag(address);
-
+				
 		for (wayIdx_t way = 0; static_cast<wayIdx_t>(m_numOfWays); way++) {
 			TagLine& cacheline = m_sets[set].tags[way];
 			if (cacheline.validBit && cacheline.tagBits == tag) {
@@ -94,9 +95,6 @@ public:
 					UpdateLRU(set, way);
 				}
 				m_hits++;
-				if (op == WRITE) {
-					cacheline.dirtyBit = true;
-				}
 				return way;
 			}
 		}
@@ -152,6 +150,20 @@ public:
 		return GetAddress(set, victim.tagBits);
 	}
 
+	address_t RemoveAddress(address_t adr, bool& dirtyRemove) {
+		set_t set = GetSet(adr);
+		tag_t tag = GetTag(adr);
+		for (TagLine& victim : m_sets[set].tags) {
+			if (victim.tagBits == tag) {
+				dirtyRemove = victim.dirtyBit;
+				victim.validBit = false;
+				assert(GetAddress(set, tag) == (adr&(!m_offsetMask)));
+				return adr;
+			}
+		}
+		return NO_ADDRESS;
+	}
+
 	//returns address that was removed or NO_ADDRESS if non removed. and update LRU
 	address_t Add(uint32_t address, bool& dirtyRemove) {
 
@@ -171,7 +183,28 @@ public:
 		UpdateLRU(set, empty);
 
 		return victim;
+	}
 
+	void ModifyDirty(address_t adr, bool dirtyVal) {
+		set_t set = GetSet(adr);
+		tag_t tag = GetTag(adr);
+		for (TagLine& cacheline : m_sets[set].tags) {
+			if (cacheline.tagBits == tag) {
+				cacheline.dirtyBit = dirtyVal;
+			}
+		}
+	}
+
+	bool IsDirty(address_t adr) {
+		set_t set = GetSet(adr);
+		tag_t tag = GetTag(adr);
+		for (TagLine& cacheline : m_sets[set].tags) {
+			if (cacheline.tagBits == tag) {
+				return(cacheline.dirtyBit);
+			}
+		}
+		assert(0);
+		return false;
 	}
 
 	int GetTotalCycles() { return m_numOfAccesses*m_numOfCycles; }
@@ -187,7 +220,9 @@ public:
     }
 
 	address_t GetAddress(set_t set, tag_t tag) {
-
+		address_t adr = set << m_numOfTagBits;
+		adr += tag;
+		return adr;
 	}
 
 	tag_t GetTag(address_t address) {
@@ -201,7 +236,6 @@ class CacheSim {
 
 	//more simulator params
 
-
 	Cache m_L1;
 	Cache m_L2;
 	Cache m_victim;
@@ -214,36 +248,94 @@ class CacheSim {
 
 	CacheSim() {}
 
-	void AddToL1(address_t adr) {} //TODO
-	void AddToL2(address_t adr) {} //TODO
+
+	void AddToL1(address_t adr) {
+		bool dirtyRemove;
+		address_t victim = m_L1.Add(adr, dirtyRemove); //victim is the block removed if no room
+		if (victim != NO_ADDRESS) {
+			if (dirtyRemove) {
+				m_L2.UpdateLRU(victim);
+				m_L2.ModifyDirty(victim, dirtyRemove);
+			}
+		}
+		if (m_L2.IsDirty(adr)) {
+			m_L1.ModifyDirty(adr, true);
+			m_L2.ModifyDirty(adr, false);
+		}
+	}
+
+	void AddToL2(address_t adr) {
+		bool dirtyRemoveL2;
+		address_t victim = m_L2.Add(adr, dirtyRemoveL2);
+		if (victim != NO_ADDRESS) {
+			bool dirtyRemoveL1 = false;
+			address_t victimL1 = m_L1.RemoveAddress(victim, dirtyRemoveL1);
+			assert(!(dirtyRemoveL2 && victimL1 != NO_ADDRESS)); // not possible for address to be dirty in L2 and exist in L1
+			dirtyRemoveL2 = dirtyRemoveL2 || dirtyRemoveL1;
+
+			if (m_usingVictimCache) {
+				bool null; // don't care who i remove from victim cache
+				m_victim.Add(victim, null);
+				m_victim.ModifyDirty(victim, dirtyRemoveL2);
+			}
+		}
+
+
+		
+
+	} //TODO
 
 	void HandleNewAddress(address_t adr, char operation) {
 		OPERATION op = (operation == 'W') ? WRITE : READ;
-		bool noAlloc = (op == WRITE && m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
+		bool noAllocWrite = (op == WRITE && m_writePolicy == WRITE_POLICY::NO_WRITE_ALLOC);
 
-		if (m_L1.Find(adr, op) != NOT_FOUND) {
+		if (m_L1.Access(adr) != NOT_FOUND) {
+			if (op == WRITE) {
+				m_L1.ModifyDirty(adr, 1); //make dirty
+			}
 			return; // not need for anything else.
 		}
 
-		if (m_L2.Find(adr, op) != NOT_FOUND) {
-
-			if ((op == WRITE && m_writePolicy == WRITE_ALLOC) || op == READ) {
+		if (m_L2.Access(adr) != NOT_FOUND) {
+			if (op == WRITE) {
+				if (WRITE_ALLOC) {
+					AddToL1(adr);
+					m_L1.ModifyDirty(adr, 1);
+				}
+				else {
+					m_L2.ModifyDirty(adr, 1);
+				}
+			}
+			else { //READ
 				AddToL1(adr);
 			}
 			return;
 		}
 
 		if (m_usingVictimCache) {
-			if (m_victim.Find(adr, op) != NOT_FOUND) {
-				AddToL2(adr);
-				AddToL1(adr);
+			if (m_victim.Access(adr) != NOT_FOUND) {
+				bool isDirty;
+				if (!noAllocWrite) {
+					address_t victim = m_victim.RemoveAddress(adr, isDirty);
+					assert(victim == adr);
+					AddToL2(adr);
+					AddToL1(adr);
+					m_L1.ModifyDirty(adr, isDirty);
+				}
+				else { //write with no alloc
+					m_victim.ModifyDirty(adr, true);
+				}
 				return;
 			}
 		}
+
 		m_memAccess++;
-		if ((op == WRITE && m_writePolicy == WRITE_ALLOC) || op == READ) {
+		if (!noAllocWrite) { //read or write with alloc
 			AddToL2(adr); //first add to L2.
 			AddToL1(adr);
+			if (op == WRITE) {
+				m_L1.ModifyDirty(adr, true);
+			}
 		}
 		return;
 	}
