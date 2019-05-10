@@ -150,6 +150,7 @@ public:
         int minLru = m_numOfWays - 1;
         for(int i = 0; i < m_numOfWays; i++){
             if(m_sets[set].tags[i].lruCount < minLru){
+				assert(m_sets[set].tags[i].validBit);
                 minLru = m_sets[set].tags[i].lruCount;
                 wayToClear = i;
             }
@@ -165,7 +166,7 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &victim : m_sets[set].tags) {
-            if (victim.tagBits == tag) {
+            if (victim.validBit && victim.tagBits == tag) {
                 dirtyRemove = victim.dirtyBit;
                 victim.validBit = false;
 				victim.dirtyBit = 0;
@@ -202,7 +203,7 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
-            if (cacheline.tagBits == tag) {
+            if (cacheline.validBit && cacheline.tagBits == tag) {
                 cacheline.dirtyBit = dirtyVal;
             }
         }
@@ -212,7 +213,7 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
-            if (cacheline.tagBits == tag) {
+            if (cacheline.validBit && cacheline.tagBits == tag) {
                 return (cacheline.dirtyBit);
             }
         }
