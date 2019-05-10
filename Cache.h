@@ -150,6 +150,7 @@ public:
         int minLru = m_numOfWays - 1;
         for(int i = 0; i < m_numOfWays; i++){
             if(m_sets[set].tags[i].lruCount < minLru){
+				assert(m_sets[set].tags[i].validBit);
                 minLru = m_sets[set].tags[i].lruCount;
                 wayToClear = i;
             }
@@ -165,7 +166,7 @@ public:
         set_t set = GetSet(adr);
         tag_t tag = GetTag(adr);
         for (TagLine &victim : m_sets[set].tags) {
-            if (victim.tagBits == tag) {
+            if (victim.validBit && victim.tagBits == tag) {
                 dirtyRemove = victim.dirtyBit;
                 victim.validBit = false;
 				victim.dirtyBit = 0;
@@ -203,6 +204,7 @@ public:
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
             if (cacheline.tagBits == tag) {
+				assert(cacheline.validBit);
                 cacheline.dirtyBit = dirtyVal;
             }
         }
@@ -213,6 +215,7 @@ public:
         tag_t tag = GetTag(adr);
         for (TagLine &cacheline : m_sets[set].tags) {
             if (cacheline.tagBits == tag) {
+				assert(cacheline.validBit);
                 return (cacheline.dirtyBit);
             }
         }
@@ -230,8 +233,12 @@ public:
 
     set_t GetSet(address_t address) {
         address &= m_setMask;
+<<<<<<< HEAD
         uint32_t res = address >> m_numOfOffsetBits;
         return set_t (res);
+=======
+        return address >> m_numOfOffsetBits;
+>>>>>>> 4de33d0d5be475502c61f7e933e749b1a3e8feba
     }
 
     address_t GetAddress(set_t set, tag_t tag) {
